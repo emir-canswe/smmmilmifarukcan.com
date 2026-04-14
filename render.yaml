@@ -1,0 +1,28 @@
+# Render Blueprint: repo kökünde iken "Blueprint" ile tek tık oluşturma
+# https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: smmm-ilmifarukcan-web
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_SECURE
+        value: "false"
+      - key: MAIL_TO
+        value: ilmifarukcan@gmail.com
+      # Aşağıdakileri Render panelinde Secret olarak doldurun (Blueprint sonrası veya oluşturma sihirbazında)
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+      - key: MAIL_FROM
+        sync: false

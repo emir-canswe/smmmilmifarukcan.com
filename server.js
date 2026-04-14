@@ -54,6 +54,10 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function smtpAuthMissing() {
+  return !process.env.SMTP_USER || !process.env.SMTP_PASS;
+}
+
 async function sendMail({ name, email, phone, message }) {
   const host = process.env.SMTP_HOST;
   const mailTo = process.env.MAIL_TO || "ilmifarukcan@gmail.com";
@@ -69,7 +73,12 @@ async function sendMail({ name, email, phone, message }) {
     message,
   ].join("\n");
 
-  if (!host) {
+  if (!host || smtpAuthMissing()) {
+    if (isProd) {
+      const err = new Error("SMTP not configured");
+      err.code = "SMTP_NOT_CONFIGURED";
+      throw err;
+    }
     console.log("[contact] SMTP tanımlı değil — konsol çıktısı:\n" + text);
     return { mode: "log" };
   }
@@ -78,16 +87,14 @@ async function sendMail({ name, email, phone, message }) {
     host,
     port: Number(process.env.SMTP_PORT) || 587,
     secure: process.env.SMTP_SECURE === "true",
-    auth:
-      process.env.SMTP_USER && process.env.SMTP_PASS
-        ? { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
-        : undefined,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
   });
 
   const from = process.env.MAIL_FROM || process.env.SMTP_USER || mailTo;
+  const safeDisplay = name.replace(/["<>\\]/g, "").trim().slice(0, 80) || "Ziyaretçi";
 
   await transporter.sendMail({
-    from: `"${name}" <${from}>`,
+    from: `"${safeDisplay}" <${from}>`,
     replyTo: email,
     to: mailTo,
     subject: `[Web Formu] ${name}`,
@@ -122,6 +129,13 @@ app.post("/api/contact", contactLimiter, async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error("[contact]", err);
+    if (err.code === "SMTP_NOT_CONFIGURED") {
+      return res.status(503).json({
+        ok: false,
+        error:
+          "İletişim formu sunucuda henüz yapılandırılmadı. Lütfen telefon veya e-posta ile doğrudan ulaşın.",
+      });
+    }
     res.status(500).json({ ok: false, error: "Mesaj gönderilemedi. Lütfen daha sonra tekrar deneyin." });
   }
 });
@@ -134,7 +148,7 @@ const MAX_PORT_TRIES = 30;
 const basePort = PORT;
 
 function listenOnPort(port, attempt) {
-  const server = app.listen(port, () => {
+  const server = app.listen(port, "0.0.0.0", () => {
     if (port !== basePort) {
       console.warn(
         `Not: ${basePort} portu doluydu; ${port} kullanılıyor. Tarayıcıda: http://localhost:${port}`
